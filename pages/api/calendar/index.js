@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   await dbConnect();
   const session = await getSession({ req });
 
-  if(!session) return res.status(403).json({ message: "You must be connected to create a calendar." })
+  if(!session) return res.status(403).json({ error: "You must be connected to create a calendar." })
 
   const user = await User.findOne({email: session.user.email})
   
@@ -27,7 +27,7 @@ export default async function handler(req, res) {
         break;
       } catch (e) {
         // console.log(e)
-        res.status(400).json({ success: false });
+        res.status(400).json({ error: "failed" });
         break;
       }
     }

@@ -9,9 +9,9 @@ import { useEffect } from "react"
 export default function Header() {
   const { data: session, status } = useSession()
   const loading = status === "loading"
-  useEffect(() => {
+  /* useEffect(() => {
     console.log(session, status)
-  }, [session, status])
+  }, [session, status]) */
 
   return (
     <header>

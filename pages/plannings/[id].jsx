@@ -1,71 +1,55 @@
-import React, { useState } from "react";
-import { User, Calendar } from "../../models";
-import dbConnect from "../../lib/dbConnect";
-import { getSession } from "next-auth/react";
-import { create, remove } from "../../lib/crud/event" 
+import React, { useEffect, useState, useReducer } from "react";
+import useSWR from "swr";
+import { SWRFetcher, APIFetcher } from "../../lib/fetcher";
+import { useRouter } from "next/router";
+import ErrorPage from "../../components/ErrorPage";
+import { Calendar } from "../../components/Calendar";
 
-const Planning = ({ calendar }) => {
-  if (!calendar)
-  return (
-    <div>
-      Oups ! Ce calendrier n'existe pas ou vous n'avez pas les autorisations
-      nécessaires pour y accéder.
-    </div>
-  );
+const Planning = () => {
+  const { query } = useRouter();
+  // const { mutate } = useSWRConfig()
+  const {
+    data: calendar,
+    error,
+    mutate,
+  } = useSWR(query.id ? `/api/calendar/${query.id}` : null, SWRFetcher);
+
+  if (!error && !calendar) return "chargement...";
+  if (!calendar) return <ErrorPage>{error.message}</ErrorPage>;
   const calendarId = calendar._id;
-  const [eventName, setEventName] = useState(null);
 
-  const createEvent = async () => {
+  const createEvent = async (eventName) => {
     const body = {
-      calendarId,
-      event: {
-        name: eventName,
-        from: new Date(),
-        to: new Date(),
-        calendar: calendarId,
-      },
+      name: eventName,
+      from: new Date(),
+      to: new Date(),
+      calendar: calendarId,
     };
-    await create(body, calendarId)
+
+    const newEvents = calendar.events.filter((t) => true);
+    newEvents.push(body);
+    const newCalendar = { ...newCalendar, events: newEvents };
+    mutate({ ...calendar, events: newEvents }, false);
+    await APIFetcher(`/api/calendar/${query.id}`, "POST", body);
+    mutate()
   };
 
-  const removeEvent = async (eventId) => remove(eventId, calendarId)
+  const removeEvent = async (eventToRemove) => {
+    const newEvents = calendar.events.filter(
+      (event) => event._id.toString() !== eventToRemove._id.toString()
+    );
+    const newCalendar = { ...calendar, events: newEvents };
+    mutate(newCalendar, false);
+    await await APIFetcher(`/api/calendar/${query.id}`, "DELETE", eventToRemove);
+    mutate()
+  };
 
+  const eventCrud = {
+    createEvent,
+    removeEvent,
+  };
 
-  return (
-    <>
-      <div>calendrier id : {calendar._id}</div>
-      {calendar.events.map(event => (
-        <div key={event._id} onClick={() => removeEvent(event._id)}>{event._id}</div>
-      ))}
-      <div onClick={() => setEventName(true)}>Ajouter un évènement</div>
-      {eventName && (
-        <>
-          <input onChange={(e) => setEventName(e.target.value)} type="text" />
-          <div onClick={createEvent}>Créer</div>
-        </>
-      )}
-    </>
-  );
+  return <Calendar calendar={calendar} eventCrud={eventCrud} />;
 };
 
 export default Planning;
-
-export async function getServerSideProps(context) {
-  await dbConnect();
-  const calendar = await Calendar.findById(context.params.id).lean();
-  const session = await getSession(context);
-  if (!session || !calendar) return { props: { calendar: null } };
-  const userId = session.user.id;
-
-  // user is neither in reader, editor nor owner
-  const owner = calendar.owner.toString();
-  const editors = calendar.editors.map((editor) => editor.toString());
-  const readers = calendar.readers.map((reader) => reader.toString());
-  if (
-    !calendar.public &&
-    [owner, ...editors, ...readers].indexOf(userId.toString()) === -1
-  )
-    return { props: { calendar: null } };
-
-  return { props: { calendar: JSON.parse(JSON.stringify(calendar)) } };
-}
